@@ -1,0 +1,15 @@
+targets:
+  $default:
+    builders:
+      ientity_generator:
+        enabled: true
+
+builders:
+  ientity_generator:
+    target: ":lib"
+    import: "package:ientity_generator/src/external/Builder.dart"
+    builder_factories: ["generateExtension"]
+    build_extensions: { ".dart": [".g.dart"] }
+    auto_apply: dependents
+    build_to: cache
+    applies_builders: ["source_gen|combining_builder"]
