@@ -263,9 +263,10 @@ class QEntity {
       }
 
       buffer.writeln(r'assert(list.isEmpty, "unknown columns = ${list.map((e) => e.name).toList()}");');
-      buffer.writeln('if(changed) {');
-      buffer.writeln('m.setEdited(true, changed: changedList);');
-      buffer.writeln('} return changed;');
+      // buffer.writeln('if(changed) {');
+      // buffer.writeln('m.setEdited(true, changed: changedList);');
+      // buffer.writeln('}');
+      buffer.writeln('return changed;');
       
       buffer.writeln('}');
     }
