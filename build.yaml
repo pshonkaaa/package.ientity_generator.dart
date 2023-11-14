@@ -6,10 +6,12 @@ targets:
 
 builders:
   ientity_generator:
-    target: ":lib"
-    import: "package:ientity_generator/src/external/Builder.dart"
+    import: "package:ientity_generator/src/external/builder.dart"
     builder_factories: ["generateExtension"]
-    build_extensions: { ".dart": [".g.dart"] }
+    build_extensions: { ".dart": [".ientity.g.part"] }
     auto_apply: dependents
     build_to: cache
+
+    # To copy the `.g.part` content into `.g.dart` in the source tree
+    # https://pub.dev/packages/source_gen
     applies_builders: ["source_gen|combining_builder"]

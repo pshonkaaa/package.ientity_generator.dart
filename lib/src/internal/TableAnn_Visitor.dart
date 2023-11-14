@@ -9,9 +9,9 @@ import 'package:source_gen/src/type_checker.dart';
 import 'package:true_core/library.dart';
 
 class TableAnn_Visitor extends SimpleElementVisitor<void> {
-  static const TypeChecker ANNOTATION_TABLE = TypeChecker.fromRuntime(AnTable);
-  static const TypeChecker ANNOTATION_TABLE_COLUMN = TypeChecker.fromRuntime(AnTableColumn);
-  static const TypeChecker CLASS_ITABLE = TypeChecker.fromRuntime(ITable);
+  static const TypeChecker ANNOTATION_TABLE = TypeChecker.fromRuntime(TableAnnotation);
+  static const TypeChecker ANNOTATION_TABLE_COLUMN = TypeChecker.fromRuntime(TableColumnAnnotation);
+  static const TypeChecker CLASS_ITABLE = TypeChecker.fromRuntime(BaseTable);
   static const TypeChecker CLASS_ENTITY_COLUMN_INFO = TypeChecker.fromRuntime(EntityColumnInfo);
   static const TypeChecker CLASS_JSON_SERIALIZABLE = TypeChecker.fromRuntime(JsonSerializable);
 

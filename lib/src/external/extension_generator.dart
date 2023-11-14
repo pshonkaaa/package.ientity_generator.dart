@@ -1,21 +1,24 @@
 import 'dart:async';
 
-import 'package:analyzer/dart/element/type.dart';
 import 'package:build/src/builder/build_step.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:ientity/library.dart';
 import 'package:ientity_generator/src/internal/TableAnn_Visitor.dart';
-import 'package:json_annotation_ex/library.dart';
-import 'package:recase/recase.dart';
 import 'package:source_gen/source_gen.dart';
+import 'package:true_core/library.dart';
 
-class ExtensionGenerator extends GeneratorForAnnotation<AnTable> {
+import '../internal/classes/field_info.dart';
+import '../internal/enums.dart';
+
+class ExtensionGenerator extends GeneratorForAnnotation<TableAnnotation> {
   final List<String> entityNames = [];
 
   @override
   FutureOr<String> generate(LibraryReader library, BuildStep buildStep) async {
     final sb = new StringBuffer();
     sb.writeln('// ignore_for_file: unused_local_variable, dead_code');
+
+    sb.writeln(_generateGlobal());
     
     final gen = await super.generate(library, buildStep);
 
@@ -57,6 +60,99 @@ class ExtensionGenerator extends GeneratorForAnnotation<AnTable> {
 }
 
 
+String _generateGlobal() {
+  final buffer = StringBuffer();
+
+  // _isEquals
+  //--------------------------------------------------------------------------
+  {
+    buffer.writeln('bool _isEquals<T>(T a, T b) {');
+    {
+      buffer.writeln('if(T == List)');
+        buffer.writeln('return _listEquals(a as List, b as List);');
+      buffer.writeln('if(T == Map)');
+        buffer.writeln('return _mapEquals(a as Map, b as Map);');
+      buffer.writeln('return a == b;');
+      
+    }
+    buffer.writeln('}');
+  }
+  //--------------------------------------------------------------------------
+
+  // _listEquals
+  //--------------------------------------------------------------------------
+  {
+    final string =
+'''/// from 'package:flutter/foundation.dart'
+bool _listEquals<T>(List<T>? a, List<T>? b) {
+  if (a == null) {
+    return b == null;
+  }
+  if (b == null || a.length != b.length) {
+    return false;
+  }
+  if (identical(a, b)) {
+    return true;
+  }
+  for (int index = 0; index < a.length; index += 1) {
+    if (a[index] != b[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+''';
+    buffer.writeln(string);
+  };
+  //--------------------------------------------------------------------------
+
+  // _mapEquals
+  //--------------------------------------------------------------------------
+  {
+    final string =
+'''/// from 'package:flutter/foundation.dart'
+bool _mapEquals<T, U>(Map<T, U>? a, Map<T, U>? b) {
+  if (a == null) {
+    return b == null;
+  }
+  if (b == null || a.length != b.length) {
+    return false;
+  }
+  if (identical(a, b)) {
+    return true;
+  }
+  for (final T key in a.keys) {
+    if (!b.containsKey(key) || b[key] != a[key]) {
+      return false;
+    }
+  }
+  return true;
+}
+''';
+    buffer.writeln(string);
+  };
+  //--------------------------------------------------------------------------
+
+  // _transform
+  //--------------------------------------------------------------------------
+  {
+    buffer.writeln('T _transform<T>(EntityColumnInfo<T> column, T value) {');
+    {
+      buffer.writeln('''
+        if(column.transformer == null)
+          return value;
+        return column.transformer!(value);
+      ''');
+      
+    }
+    buffer.writeln('}');
+  }
+  //--------------------------------------------------------------------------
+
+  return buffer.toString();
+}
+
+
 
 
 
@@ -91,105 +187,38 @@ class ExtensionGenerator extends GeneratorForAnnotation<AnTable> {
 class QEntity {
   final TableAnn_Visitor visitor;
   final buffer = StringBuffer();
+  
   QEntity.fromClassElement(this.visitor) {
-    buffer.writeln('class ${visitor.entityName} extends IEntity {');
+    _main();
+  }
+    
+  void _main() {
+    buffer.writeln('class ${visitor.entityName} extends BaseEntity {');
 
     buffer.writeln('static const TAG = "${visitor.entityName}";');
 
-    buffer.writeln('');
-    
-    // buffer.writeln('@override');
-    // buffer.writeln('late int id;');
-    for(final field in visitor.fields) {
-      final info = FieldInfo(visitor, field);
-      _putField(
-        type: info.typeName,
-        name: info.name,
-      );
-    }
+    buffer.writeln();
+    buffer.writeln();
 
-    if(visitor.modelName.isNotEmpty) {
-      buffer.writeln();
-      _putField(
-        type: visitor.modelName,
-        name: "model",
-      );
-    }    
+    _genColumns();
 
-    // Constructor .create
-    //--------------------------------------------------------------------------
-    {
-      buffer.writeln('${visitor.entityName}.create({');
-      for(final field in visitor.fields) {
-        final info = FieldInfo(visitor, field);
-        if(info.isPrimaryKey)
-          continue;
-        buffer.writeln('\trequired this.${info.name},');
-      }
-      buffer.writeln('}) : super.create() {');
-      buffer.writeln('id = 0;');
-      buffer.writeln('setEdited(true, changed: COLUMNS);');
-      if(visitor.modelName.isNotEmpty)
-        buffer.writeln('model = ${visitor.modelName}.fromEntity(this);');
-      buffer.writeln('}');
-    }
-    //--------------------------------------------------------------------------
+    buffer.writeln();
+    buffer.writeln();
 
-    buffer.writeln('');
+    _genConstructorCreate();
 
-    // Constructor .fromTable
-    //--------------------------------------------------------------------------
-    {
-      buffer.writeln('${visitor.entityName}.fromTable(JsonObjectEx json) : super.fromTable(json) {');
-      for(final field in visitor.fields) {
-        final info = FieldInfo(visitor, field);
-        final method = getJsonMethodByType(
-          varName: "json",
-          type: info.dartType,
-          typeName: info.typeName,
-          typeNameWithoutTemplates: info.typeNameWithoutTemplates,
-          templates: info.templates,
-          keyName: "${info.constName}.name",
-          isNullable: info.isNullable,
-          isSerializable: info.isSerializable,
-        );
-        buffer.writeln('${info.name} = $method');
-      }
-        
-      buffer.writeln('');
+    buffer.writeln();
 
-      if(visitor.modelName.isNotEmpty)
-        buffer.writeln('model = ${visitor.modelName}.fromEntity(this);');
+    _genConstructorFromTable();
 
-      buffer.writeln('}');
-    }
-    //--------------------------------------------------------------------------
+    buffer.writeln();
 
-    buffer.writeln('');
-    buffer.writeln('');
-    
-    // COLUMNS
-    //--------------------------------------------------------------------------
-    {
-      for(final field in visitor.fields) {
-        final info = FieldInfo(visitor, field);
-        buffer.writeln('\tstatic const ${info.constName} = ${visitor.className}.${field.name};');
-      }
+    _genVariables();
 
-      buffer.writeln('');
-      
-      buffer.writeln('\tstatic const COLUMNS = [');
-      for(final field in visitor.fields) {
-        final info = FieldInfo(visitor, field);
-        buffer.writeln('\t\t${info.constName},');
-      }
-      buffer.writeln('\t];');
+    buffer.writeln();
 
-    }
-    //--------------------------------------------------------------------------
-
-    buffer.writeln('');
-    buffer.writeln('');
+    buffer.writeln();
+    buffer.writeln();
 
     // initState
     //--------------------------------------------------------------------------
@@ -205,7 +234,7 @@ class QEntity {
     }
     //--------------------------------------------------------------------------
 
-    buffer.writeln('');
+    buffer.writeln();
 
     // dispose
     //--------------------------------------------------------------------------
@@ -221,7 +250,7 @@ class QEntity {
     }
     //--------------------------------------------------------------------------
 
-    buffer.writeln('');
+    buffer.writeln();
 
 
     
@@ -241,8 +270,8 @@ class QEntity {
         buffer.writeln('final src = this, dst = m;');
         buffer.writeln('final List<EntityColumnInfo> changedList = [];');
         buffer.writeln('bool changed = false;');
-        buffer.writeln('');
-        buffer.writeln('final list = IEntity.makeParamsList(COLUMNS, include, exclude);');
+        buffer.writeln();
+        buffer.writeln('final list = BaseEntity.makeParamsList(COLUMNS, include, exclude);');
         buffer.writeln('{');
 
         buffer.writeln('bool flag = false;');
@@ -301,21 +330,21 @@ class QEntity {
       buffer.writeln('}) {');
       {
         buffer.writeln('final src = this, dst = m;');
-        buffer.writeln('');
+        buffer.writeln();
         buffer.writeln('differences ??= [];');
-        buffer.writeln('');
+        buffer.writeln();
         buffer.writeln('final identical = isIdentical(');
         buffer.writeln('dst,');
         buffer.writeln('include: include,');
         buffer.writeln('exclude: exclude,');
         buffer.writeln('differences: differences,');
         buffer.writeln(');');
-        buffer.writeln('');
+        buffer.writeln();
         buffer.writeln('if(!identical)');
         buffer.writeln('return false;');
-        buffer.writeln('');
+        buffer.writeln();
         buffer.writeln('final list = differences.map((e) => e.column).toList();');
-        buffer.writeln('');
+        buffer.writeln();
         buffer.writeln('{');
           buffer.writeln('bool flag = false;');
           for(final field in visitor.fields) {
@@ -346,14 +375,14 @@ class QEntity {
       buffer.writeln('List<EntityColumnInfo> exclude = const [],');
       buffer.writeln('}) {');
       {
-        buffer.writeln('final list = IEntity.makeParamsList(COLUMNS, include, exclude);');
-        buffer.writeln('final map = {');
+        buffer.writeln('final _list = BaseEntity.makeParamsList(COLUMNS, include, exclude);');
+        buffer.writeln('final _map = {');
           for(final field in visitor.fields) {
             final info = FieldInfo(visitor, field);
             if(info.isPrimaryKey) {
-              buffer.writeln('if(list.remove(${info.constName}) && requestType != ERequestType.insert)');
+              buffer.writeln('if(_list.remove(${info.constName}) && requestType != ERequestType.insert)');
             } else {
-              buffer.writeln('if(list.remove(${info.constName}))');
+              buffer.writeln('if(_list.remove(${info.constName}))');
             }
             
             final value = getValueByType(
@@ -368,41 +397,9 @@ class QEntity {
             buffer.writeln('${info.constName}: _transform(${info.constName}, ${value}),');
           }
         buffer.writeln('};');
-        buffer.writeln('');
-        buffer.writeln(r'assert(list.isEmpty, "unknown columns = ${list.map((e) => e.name).toList()}");');
-        buffer.writeln('return RowInfo(map);');
-      }
-      buffer.writeln('}');
-    }
-    //--------------------------------------------------------------------------
-
-    // static _isEquals
-    //--------------------------------------------------------------------------
-    {
-      buffer.writeln('bool _isEquals<T>(T a, T b) {');
-      {
-        buffer.writeln('if(T == List)');
-          buffer.writeln('return listEquals(a as List, b as List);');
-        buffer.writeln('if(T == Map)');
-          buffer.writeln('return mapEquals(a as Map, b as Map);');
-        buffer.writeln('return a == b;');
-        
-      }
-      buffer.writeln('}');
-    }
-    //--------------------------------------------------------------------------
-
-    // static _transform
-    //--------------------------------------------------------------------------
-    {
-      buffer.writeln('T _transform<T>(EntityColumnInfo<T> column, T value) {');
-      {
-        buffer.writeln('''
-          if(column.transformer == null)
-            return value;
-          return column.transformer!(value);
-        ''');
-        
+        buffer.writeln();
+        buffer.writeln(r'assert(_list.isEmpty, "unknown columns = ${_list.map((e) => e.name).toList()}");');
+        buffer.writeln('return RowInfo(_map);');
       }
       buffer.writeln('}');
     }
@@ -412,12 +409,102 @@ class QEntity {
     buffer.writeln('}');
   }
 
-  void _putField({
-    required String type,
-    required String name,
-  }) {
-    buffer.writeln("late $type $name;");
+  void _genColumns() {
+    for(final field in visitor.fields) {
+      final info = FieldInfo(visitor, field);
+      buffer.writeln('\tstatic const ${info.constName} = ${visitor.className}.${field.name};');
+    }
+
+    buffer.writeln();
+    
+    buffer.writeln('\tstatic const COLUMNS = [');
+    for(final field in visitor.fields) {
+      final info = FieldInfo(visitor, field);
+      buffer.writeln('\t\t${info.constName},');
+    }
+    buffer.writeln('\t];');
   }
+
+  void _genConstructorCreate() {
+    buffer.writeln('${visitor.entityName}.create({');
+    for(final field in visitor.fields) {
+      final info = FieldInfo(visitor, field);
+      if(info.isPrimaryKey)
+        continue;
+      buffer.writeln('\trequired this.${info.name},');
+    }
+    buffer.writeln('}) : super.create() {');
+    buffer.writeln('id = 0;');
+    buffer.writeln('setEdited(true, changed: COLUMNS);');
+    if(visitor.modelName.isNotEmpty)
+      buffer.writeln('model = ${visitor.modelName}.fromEntity(this);');
+    buffer.writeln('}');
+  }
+
+  void _genConstructorFromTable() {
+    buffer.writeln('${visitor.entityName}.fromTable(Map<String, dynamic> json) : super.fromTable(json) {');
+
+    buffer.writeln();
+
+    {
+      buffer.writeln('// checking if column not exists :|');
+
+      final string = r'''
+        for(final column in COLUMNS) {
+          if(!json.containsKey(column.name)) {
+            throw 'Key not exists; key = ${column.name}';
+          }
+        }
+      ''';
+      buffer.writeln(string);
+    }
+
+    buffer.writeln();
+
+    for(final field in visitor.fields) {
+      final info = FieldInfo(visitor, field);
+      final method = getJsonMethodByType(
+        varName: "json",
+        type: info.dartType,
+        typeName: info.typeName,
+        typeNameWithoutTemplates: info.typeNameWithoutTemplates,
+        templates: info.templates,
+        keyName: "${info.constName}.name",
+        isNullable: info.isNullable,
+        isSerializable: info.isSerializable,
+      );
+      buffer.writeln('${info.name} = $method');
+    }
+      
+    buffer.writeln();
+
+    if(visitor.modelName.isNotEmpty)
+      buffer.writeln('model = ${visitor.modelName}.fromEntity(this);');
+
+    buffer.writeln('}');
+  }
+  
+  void _genVariables() {
+    // buffer.writeln('@override');
+    // buffer.writeln('late int id;');
+
+    for(final field in visitor.fields) {
+      final info = FieldInfo(visitor, field);
+
+      buffer.writeln("late ${info.typeName} ${info.name};");
+    }
+
+    if(visitor.modelName.isNotEmpty) {
+      buffer.writeln();
+
+      buffer.writeln("late ${visitor.modelName} model;");
+    }
+
+    buffer.writeln();
+  }
+
+
+
 
   static String getValueByType({
     required String varName,
@@ -437,7 +524,7 @@ class QEntity {
         return varName;
       case EDartType.bool:
         return varName;
-      case EDartType.ENUM:
+      case EDartType.enum_:
         String value = varName;
         if(isNullable)
           value += "?";
@@ -445,7 +532,7 @@ class QEntity {
       case EDartType.list:
         return "JsonArrayEx.fromList($varName).stringify()";
       case EDartType.map:
-        return "IEntity.jsonEncode($varName)";
+        return "BaseEntity.jsonEncode($varName)";
       case EDartType.dynamic:
         String value = varName;
         if(typeNameWithoutTemplates == "JsonObjectEx")
@@ -474,96 +561,85 @@ class QEntity {
     final buffer = StringBuffer();
 
     String method;
+    String methodTemplate = '';
 
     switch(type) {
       case EDartType.int:
-        method = "getInteger";
+        method = "parseInteger";
         break;
       case EDartType.double:
-        method = "getDouble";
+        method = "parseDouble";
         break;
       case EDartType.string:
-        method = "getString";
+        method = "parseString";
         break;
       case EDartType.bool:
-        method = "getBoolean";
+        method = "parseBoolean";
         break;
-      case EDartType.ENUM:
-        method = "getInteger";
+      case EDartType.enum_:
+        method = "parseInteger";
         break;
       case EDartType.list:
-        method = "getArray";
+        method = "parseArray";
+        methodTemplate = templates.tryFirst ?? '';
         break;
       case EDartType.map:
-        method = "getString";
+        method = "parseString";
         break;
       case EDartType.dynamic:
-        method = "getDynamic";
+        method = "parseDynamic";
         if(typeNameWithoutTemplates == "JsonObjectEx")
-          method = "getJsonObject";
+          method = "parseJsonObject";
         else if(typeNameWithoutTemplates == "JsonArrayEx")
-          method = "getJsonArray";
+          method = "parseJsonArray";
         else if(isSerializable)
-          method = "getJsonObject";
+          method = "parseJsonObject";
         break;
 
       default:
-        method = "getDynamic";
-        break;
+        throw 'Unknown data type; variable name = $varName';
+        // method = "getDynamic";
+        // break;
     }
 
     // final args = methodArgs.join(", ");
-    var suffix = isNullable ? "" : "!";
+    String suffix = '';
 
-    if(type == EDartType.ENUM) {
-      if(isNullable) {
-        buffer.write("!$varName.isNull($keyName) ? ");
-        suffix = "!";
-      }
-        
+
+    if(isNullable) {
+      buffer.write("$varName[$keyName] != null ? ");
+      // suffix = "!";
+    }
+
+    if(type == EDartType.enum_) {        
       buffer.write("${typeNameWithoutTemplates}.values[");
 
-    } else if(isSerializable) {
-      if(isNullable) {
-        buffer.write("!$varName.isNull($keyName) ? ");
-        suffix = "!";
-      }
-        
+    } else if(isSerializable) {        
       buffer.write("${typeNameWithoutTemplates}.fromJson(");
       
-    } else if(type == EDartType.map) {
-      if(isNullable) {
-        buffer.write("!$varName.isNull($keyName) ? ");
-        suffix = "!";
-      }
-        
-      buffer.write('IEntity.jsonDecode<${templates.join(",")}>(');
+    } else if(type == EDartType.map) {        
+      buffer.write('BaseEntity.jsonDecode<${templates.join(",")}>(');
     }
 
 
+    methodTemplate = methodTemplate.isEmpty ? '' : '<$methodTemplate>';
     
-    buffer.write('$varName.${method}(${keyName})$suffix');
+    buffer.write('ValueParser.${method}${methodTemplate}(${varName}[${keyName}])$suffix');
     
-    if(type == EDartType.ENUM) {
+    if(type == EDartType.enum_) {
       buffer.write("]");
-
-      if(isNullable) {
-        buffer.write(" : null");
-      }
 
     } else if(isSerializable) {
       buffer.write(")");
-
-      if(isNullable) {
-        buffer.write(" : null");
-      }
       
     } else if(type == EDartType.map) {
       buffer.write(")");
 
-      if(isNullable) {
-        buffer.write(" : null");
-      } else buffer.write("!");
+      buffer.write('!');
+    }
+
+    if(isNullable) {
+      buffer.write(" : null");
     }
     
     buffer.write(";");
@@ -586,141 +662,27 @@ class QEntity {
 
 
 
-class FieldInfo {
-  late String name;
-  late String constName;
-  late String typeName;
-  late String typeNameWithoutTemplates;
-  late List<String> templates;
-  late EDartType dartType;
-  late bool isNullable;
-  late bool isPrimaryKey;
-  late bool isSerializable;
-  FieldInfo(
-    TableAnn_Visitor visitor,
-    FieldElement field,
-  ) {
-    final argumentType = (field.type as InterfaceType).typeArguments.first;
 
-    name = field.name;
-    name = name.replaceFirst(visitor.removePrefix, "");
-    name = encodedFieldName(visitor.fieldRename, name);
-    constName = encodedFieldName(FieldRename.constant, name);
-    typeName = argumentType.getDisplayString(withNullability: true);
-    typeNameWithoutTemplates = argumentType.getDisplayString(withNullability: false).replaceFirst(RegExp(r"\<.*>"), "");
-    templates = !typeName.contains("<") ? [] : argumentType.getDisplayString(withNullability: false).replaceAllMapped(RegExp(r".*?\<(.*?)\>"), (match) => match.group(1)!).split(", ");
-    dartType = dartTypeToEnum(argumentType);
-    isNullable = typeName.endsWith("?");
-    // TODO constructor
-    isPrimaryKey = name.toLowerCase() == "id";
-    isSerializable = TableAnn_Visitor.CLASS_JSON_SERIALIZABLE.isSuperTypeOf(argumentType);
-  }
 
-  static String encodedFieldName(
-    FieldRename fieldRename,
-    String declaredName,
-  ) {
-    switch (fieldRename) {
-      case FieldRename.none:
-        return declaredName;
-      case FieldRename.camel:
-        return declaredName.camelCase;
-      case FieldRename.constant:
-        return declaredName.constantCase;
-      case FieldRename.snake:
-        return declaredName.snakeCase;
-      case FieldRename.kebab:
-        return declaredName.paramCase;
-      case FieldRename.pascal:
-        return declaredName.pascalCase;
-    }
-  }
 
-  static EDartType dartTypeToEnum(DartType type) {
-    final name = type.getDisplayString(withNullability: false);
-    if(name == "bool")
-      return EDartType.bool;
-    if(name == "double")
-      return EDartType.double;
-    if(name == "int")
-      return EDartType.int;
-    if(name == "String")
-      return EDartType.string;
-    if(name == "dynamic")
-      return EDartType.dynamic;
-    if(type is InterfaceType && type.superclass != null) {
-      if(type.superclass!.isDartCoreEnum)
-        return EDartType.ENUM;
-    }
-    if(name.startsWith("List"))
-      return EDartType.list;
-    if(name.startsWith("Map"))
-      return EDartType.map;
-    return EDartType.dynamic;
 
-    // // if(type.isDartAsyncFuture)
-    // //   return EDartType.asyncFuture;
-    // // if(type.isDartAsyncFutureOr)
-    // //   return EDartType.asyncFuture;
-    // // if(type.isDartAsyncStream)
-    // //   return EDartType.asyncFuture;
-    // if(type.isDartCoreBool)
-    //   return EDartType.bool;
-    // if(type.isDartCoreDouble)
-    //   return EDartType.double;
-    // if(type.isDartCoreEnum)
-    //   return EDartType.ENUM;
-    // // if(type.isDartCoreFunction)
-    // //   return EDartType.asyncFuture;
-    // if(type.isDartCoreInt)
-    //   return EDartType.int;
-    // // if(type.isDartCoreIterable)
-    // //   return EDartType.asyncFuture;
-    // if(type.isDartCoreList)
-    //   return EDartType.list;
-    // if(type.isDartCoreMap)
-    //   return EDartType.map;
-    // // if(type.isDartCoreNull)
-    // //   return EDartType.asyncFuture;
-    // // if(type.isDartCoreNum)
-    // //   return EDartType.asyncFuture;
-    // if(type.isDartCoreObject)
-    //   return EDartType.object;
-    // // if(type.isDartCoreRecord)
-    // //   return EDartType.asyncFuture;
-    // // if(type.isDartCoreSet)
-    // //   return EDartType.asyncFuture;
-    // if(type.isDartCoreString)
-    //   return EDartType.string;
-    // // if(type.isDartCoreSymbol)
-    // //   return EDartType.asyncFuture;
-    // if(type.isDynamic)
-    //   return EDartType.dynamic;
-    // // if(type.isVoid)
-    // //   return EDartType.VOID;
-    // return EDartType.dynamic;
-  }
-}
 
-enum EDartType {
-  asyncFuture,
-  asyncFutureOr,
-  asyncStream,
-  bool,
-  double,
-  ENUM,
-  function,
-  int,
-  iterable,
-  list,
-  map,
-  NULL,
-  num,
-  object,
-  record,
-  set,
-  string,
-  symbol,
-  dynamic,
-  VOID,
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

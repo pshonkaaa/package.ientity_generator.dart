@@ -1,1 +1,1 @@
-export 'src/external/ExtensionGenerator.dart' show ExtensionGenerator;
+export 'src/external/extension_generator.dart' show ExtensionGenerator;
