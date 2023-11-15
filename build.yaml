@@ -6,7 +6,7 @@ targets:
 
 builders:
   ientity_generator:
-    import: "package:ientity_generator/src/external/builder.dart"
+    import: "package:ientity_generator/builder.dart"
     builder_factories: ["generateExtension"]
     build_extensions: { ".dart": [".ientity.g.part"] }
     auto_apply: dependents
