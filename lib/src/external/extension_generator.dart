@@ -5,7 +5,7 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:ientity/library.dart';
 import 'package:ientity_generator/src/internal/TableAnn_Visitor.dart';
 import 'package:source_gen/source_gen.dart';
-import 'package:true_core/library.dart';
+import 'package:foundation/library.dart';
 
 import '../internal/classes/field_info.dart';
 import '../internal/enums.dart';
