@@ -6,7 +6,7 @@ import 'package:json_annotation_ex/library.dart';
 import 'package:json_ex/library.dart';
 import 'package:source_gen/source_gen.dart';
 import 'package:source_gen/src/type_checker.dart';
-import 'package:foundation/library.dart';
+import 'package:pshondation/library.dart';
 
 class TableAnn_Visitor extends SimpleElementVisitor<void> {
   static const TypeChecker ANNOTATION_TABLE = TypeChecker.fromRuntime(TableAnnotation);
